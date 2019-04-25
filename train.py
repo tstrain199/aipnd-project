@@ -43,8 +43,8 @@ def main():
 
     print(gpu)
 
-    data_set = data_helper.load_train_data(args.data_directory)
-    model_helper.trainer(data_set, args.hidden_units, args.learning_rate,
+    data_set, class_to_idx  = data_helper.load_train_data(args.data_directory)
+    model_helper.trainer(data_set, class_to_idx, args.hidden_units, args.learning_rate,
                          args.epochs, args.arch, gpu, args.save_dir)
 
 

@@ -5,7 +5,7 @@ import torch.optim as optim
 from collections import OrderedDict
 from torchvision import datasets, transforms, models
 
-def trainer(data_set, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
+def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
 
     def arch_to_model(arch):
         switcher = {
@@ -30,6 +30,7 @@ def trainer(data_set, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
                               ('output', nn.LogSoftmax(dim=1))]))
 
     model.classifier = classifier
+    model.class_to_idx = class_to_idx
 
     criterion = nn.NLLLoss()
     optimizer = optim.SGD(model.parameters(), lr=learning_rate)
@@ -95,13 +96,12 @@ def trainer(data_set, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
     # Start of Save ----------------------------------------------->
 
     write_dir = save_dir + 'flowers.pth'
-    model.class_to_idx = data_set[0].class_to_idx
     torch.save({'epoch' : e,
         'class_to_idx' : model.class_to_idx,
         'model_state_dict' : model.state_dict(),
         'classifier' : classifier,
         'optimizer_dict' : optimizer.state_dict()},
-        'icp.pth')
+        'write_dir')
 
     print('Successfully saved model to {}'.format(write_dir))
 
