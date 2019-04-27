@@ -41,8 +41,6 @@ def main():
     else:
         gpu = False
 
-    print(gpu)
-
     data_set, class_to_idx  = data_helper.load_train_data(args.data_directory)
     model_helper.trainer(data_set, class_to_idx, args.hidden_units, args.learning_rate,
                          args.epochs, args.arch, gpu, args.save_dir)

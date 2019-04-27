@@ -100,7 +100,8 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
     # End of model config ----------------------------------------->
     # Start of Save ----------------------------------------------->
 
-    write_dir = save_dir + 'flowers.pth'
+    model.cpu()
+    write_dir = save_dir + '/flowers.pth'
     torch.save({'class_to_idx' : model.class_to_idx,
                 'arch' : arch,
                 'model_state_dict' : model.state_dict(),

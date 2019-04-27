@@ -49,7 +49,7 @@ def main():
     for c in mapped_classes:
         names.append(cat_to_name[str(c)])
 
-    for i in range(0, len(top_p) -1):
+    for i in range(0, len(top_p)):
         print('Flower : {}  Probabliity {}'.format(names[i], top_p[i]))
 
 if __name__ == "__main__":
