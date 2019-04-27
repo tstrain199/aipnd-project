@@ -2,19 +2,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import numpy as np
 from collections import OrderedDict
 from torchvision import datasets, transforms, models
+from PIL import Image
+
+def arch_to_model(arch):
+    switcher = {
+        'vgg11': models.vgg11(pretrained=True),
+        'vgg13': models.vgg13(pretrained=True),
+        'vgg16': models.vgg16(pretrained=True),
+        'vgg19': models.vgg19(pretrained=True)
+    }
+
+    return switcher.get(arch, 0)
 
 def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
 
-    def arch_to_model(arch):
-        switcher = {
-            'vgg16': models.vgg16(pretrained=True),
-            #'vgg19': models.vgg19(pretrained=True),
-            #'resnet18': models.resnet18(pretrained=True),
-            #'resnet33': models.resnet33(pretrained=True)
-        }
-        return switcher.get(arch, 0)
+
 
     #Configure all our model stuff here-------------------------->
     model = arch_to_model(arch)
@@ -96,26 +101,25 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
     # Start of Save ----------------------------------------------->
 
     write_dir = save_dir + 'flowers.pth'
-    torch.save({'epoch' : e,
-        'class_to_idx' : model.class_to_idx,
-        'model_state_dict' : model.state_dict(),
-        'classifier' : classifier,
-        'optimizer_dict' : optimizer.state_dict()},
-        'write_dir')
+    torch.save({'class_to_idx' : model.class_to_idx,
+                'arch' : arch,
+                'model_state_dict' : model.state_dict(),
+                'classifier' : classifier,
+                'optimizer_dict' : optimizer.state_dict()},
+                write_dir)
 
     print('Successfully saved model to {}'.format(write_dir))
 
 def load_model(ckp_path):
     ckp = torch.load(ckp_path)
-    model = models.vgg16(pretrained=True)
+    arch = ckp['arch']
+    model = arch_to_model(arch)
     model.class_to_idx = ckp['class_to_idx']
     model.classifier = ckp['classifier']
     optimizer = optim.SGD(model.parameters(), lr=0.009)
     optimizer.load_state_dict(ckp['optimizer_dict'])
-    model.load_state_dict(ckp['model_state_dict'])
-    model.epochs = ckp['epoch']
 
-    return model, optimizer
+    return model, optimizer, model.class_to_idx
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
@@ -149,3 +153,27 @@ def process_image(image):
 
 
     return np_img
+
+
+def foward(image_path, checkpoint, top_k, gpu):
+
+    model, optimizer, class_to_idx = load_model(checkpoint)
+    image = process_image(image_path)
+    image = torch.from_numpy(image).type(torch.FloatTensor)
+    image = image.unsqueeze(0)
+    print(gpu)
+    if gpu == True:
+        device = torch.device('cuda:0')
+        model = model.to(device)
+        image = image.to(device)
+
+    logps = model(image)
+    prob = torch.exp(logps)
+    top_p, top_class = prob.topk(top_k, dim=1)
+
+    classes = top_class[0].tolist()
+    probs = top_p[0].tolist()
+    return probs, classes, class_to_idx
+
+def predict(image_path, checkpoint, top_k, catagory_names, gpu):
+    top_p, top_class = foward(image_path, checkpoint, top_k, gpu)

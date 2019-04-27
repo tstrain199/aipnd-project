@@ -29,8 +29,8 @@ def main():
                         help='Hyperparameter for number of epochs', dest='epochs',
                         default='2')
 
-    parser.add_argument('--gpu', action='store_false', help='Run trainig on gpu',
-                        dest='gpu')
+    parser.add_argument('--gpu', action='store_true', help='Run trainig on gpu',
+                        dest='gpu', default=False)
 
 
     # Set variables and conditions
