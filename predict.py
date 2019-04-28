@@ -38,7 +38,7 @@ def main():
     with open(args.category_names, 'r') as f:
         cat_to_name = json.load(f)
 
-    inverted_class_to_idx = {class_to_idx[k]: k for k in class_to_idx}
+    inverted_class_to_idx = {class_to_idx[cl]: cl for cl in class_to_idx}
 
     mapped_classes = []
     names = []
