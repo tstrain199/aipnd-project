@@ -1,11 +1,10 @@
+from collections import OrderedDict
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-from collections import OrderedDict
-from torchvision import datasets, transforms, models
-from PIL import Image
+from torchvision import models
+import os
 
 def arch_to_model(arch):
     switcher = {
@@ -15,7 +14,12 @@ def arch_to_model(arch):
         'vgg19': models.vgg19(pretrained=True)
     }
 
-    return switcher.get(arch, 0)
+    selected = switcher.get(arch, 0)
+    if selected == 0:
+        print('The selected model {} is not available. Defaulting to VGG16.'.format(arch))
+        return models.vgg16(pretrained=True)
+    else:
+        return selected
 
 def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
 
@@ -29,21 +33,23 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
     features = model.classifier[0].in_features
 
     classifier = nn.Sequential(OrderedDict([('fc1', nn.Linear(features, hidden_units)),
-                              ('dropout', nn.Dropout(.20)),
-                              ('relu1',nn.ReLU()),
-                              ('fc2', nn.Linear(hidden_units, 102)),
-                              ('output', nn.LogSoftmax(dim=1))]))
+                                            ('dropout', nn.Dropout(.20)),
+                                            ('relu1', nn.ReLU()),
+                                            ('fc2', nn.Linear(hidden_units, 102)),
+                                            ('output', nn.LogSoftmax(dim=1))]))
 
     model.classifier = classifier
     model.class_to_idx = class_to_idx
 
     criterion = nn.NLLLoss()
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
 
     # Start training here ----------------------------------------->
     if gpu == True:
         device = torch.device('cuda:0')
         model = model.to(device)
+    else:
+        device = torch.device('cpu')
 
     training_loss = 0
     validation_loss = 0
@@ -67,31 +73,29 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
 
             running_loss += loss.item()
 
-        else:
+        with torch.no_grad():
+            valid_loss = 0
+            accuracy = 0
+            model.eval()
 
-            with torch.no_grad():
-                valid_loss = 0
-                accuracy = 0
-                model.eval()
+            for images, labels in data_set[1]:
+                if gpu == True:
+                    images = images.to(device)
+                    labels = labels.to(device)
 
-                for images, labels in data_set[1]:
-                    if gpu == True:
-                        images = images.to(device)
-                        labels = labels.to(device)
+                logps = model(images)
+                batch_loss = criterion(logps, labels)
 
-                    logps = model(images)
-                    batch_loss =  criterion(logps, labels)
+                valid_loss += batch_loss.item()
 
-                    valid_loss += batch_loss.item()
+                ps = torch.exp(logps)
+                _, top_class = ps.topk(1, dim=1)
+                equals = top_class == labels.view(*top_class.shape)
+                accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
 
-                    ps = torch.exp(logps)
-                    top_p, top_class = ps.topk(1, dim=1)
-                    equals = top_class == labels.view(*top_class.shape)
-                    accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
-
-                    training_loss = running_loss / len(data_set[0])
-                    validation_loss = valid_loss / len(data_set[1])
-                    test_accuracy = accuracy / len(data_set[1])
+                training_loss = running_loss / len(data_set[0])
+                validation_loss = valid_loss / len(data_set[1])
+                test_accuracy = accuracy / len(data_set[1])
 
             print("Epoch: {}/{}.. ".format(e+1, epochs),
                   "Training Loss: {:.3f}.. ".format(training_loss),
@@ -101,13 +105,13 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
     # Start of Save ----------------------------------------------->
 
     model.cpu()
-    write_dir = save_dir + '/flowers.pth'
+    write_dir = os.path.join(save_dir, 'flowers.pth')
     torch.save({'class_to_idx' : model.class_to_idx,
                 'arch' : arch,
                 'model_state_dict' : model.state_dict(),
                 'classifier' : classifier,
                 'optimizer_dict' : optimizer.state_dict()},
-                write_dir)
+               write_dir)
 
     print('Successfully saved model to {}'.format(write_dir))
 
@@ -117,10 +121,8 @@ def load_model(ckp_path):
     model = arch_to_model(arch)
     model.class_to_idx = ckp['class_to_idx']
     model.classifier = ckp['classifier']
-    optimizer = optim.SGD(model.parameters(), lr=0.009)
-    optimizer.load_state_dict(ckp['optimizer_dict'])
 
-    return model, optimizer, model.class_to_idx
+    return model, model.class_to_idx
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
@@ -158,7 +160,7 @@ def process_image(image):
 
 def foward(image_path, checkpoint, top_k, gpu):
 
-    model, optimizer, class_to_idx = load_model(checkpoint)
+    model, class_to_idx = load_model(checkpoint)
     image = process_image(image_path)
     image = torch.from_numpy(image).type(torch.FloatTensor)
     image = image.unsqueeze(0)
