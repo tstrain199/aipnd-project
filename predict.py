@@ -33,7 +33,7 @@ def main():
         gpu = False
 
     top_p, top_class, class_to_idx = model_helper.foward(args.image_path, args.checkpoint,
-                                           args.top_k, args.gpu)
+                                                         args.top_k, args.gpu)
 
     with open(args.category_names, 'r') as f:
         cat_to_name = json.load(f)

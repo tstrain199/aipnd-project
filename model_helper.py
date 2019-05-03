@@ -11,6 +11,7 @@ def arch_to_model(arch):
         'vgg11': models.vgg11(pretrained=True),
         'vgg13': models.vgg13(pretrained=True),
         'vgg16': models.vgg16(pretrained=True),
+        'resnet18': models.resnet18(pretrained=True),
         'vgg19': models.vgg19(pretrained=True)
     }
 
@@ -27,10 +28,12 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
 
     #Configure all our model stuff here-------------------------->
     model = arch_to_model(arch)
-    for param in model.parameters():
-        param.requires_grad = False
-
-    features = model.classifier[0].in_features
+    if arch == 'resnet18':
+        features = model.fc.in_features
+    else:
+        for param in model.parameters():
+            param.requires_grad = False
+        features = model.classifier[0].in_features
 
     classifier = nn.Sequential(OrderedDict([('fc1', nn.Linear(features, hidden_units)),
                                             ('dropout', nn.Dropout(.20)),
@@ -38,11 +41,17 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                                             ('fc2', nn.Linear(hidden_units, 102)),
                                             ('output', nn.LogSoftmax(dim=1))]))
 
-    model.classifier = classifier
+    if arch == 'resnet18':
+        model.fc = classifier
+        optimizer = optim.Adam(model.fc.parameters(), lr=learning_rate)
+    else:
+        model.classifier = classifier
+        optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
     model.class_to_idx = class_to_idx
 
     criterion = nn.NLLLoss()
-    optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
+
+
 
     # Start training here ----------------------------------------->
     if gpu == True:
@@ -91,8 +100,9 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                 ps = torch.exp(logps)
                 _, top_class = ps.topk(1, dim=1)
                 equals = top_class == labels.view(*top_class.shape)
+                #equals = (labels.data == ps.max(1)[1])
                 accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
-
+                #print('Top Class {}  Labels {}'.format(top_class, labels.view(*top_class.shape)))
                 training_loss = running_loss / len(data_set[0])
                 validation_loss = valid_loss / len(data_set[1])
                 test_accuracy = accuracy / len(data_set[1])
@@ -110,6 +120,7 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                 'arch' : arch,
                 'model_state_dict' : model.state_dict(),
                 'classifier' : classifier,
+                'learning_rate' : learning_rate,
                 'optimizer_dict' : optimizer.state_dict()},
                write_dir)
 
@@ -118,10 +129,19 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
 def load_model(ckp_path):
     ckp = torch.load(ckp_path)
     arch = ckp['arch']
+    print('Arch is {}'.format(arch))
     model = arch_to_model(arch)
     model.class_to_idx = ckp['class_to_idx']
-    model.classifier = ckp['classifier']
+    classifier = ckp['classifier']
+    learning_rate = ckp['learning_rate']
+    if arch == 'resnet18':
+        model.fc = classifier
+        optimizer = optim.Adam(model.fc.parameters(), lr=learning_rate)
+    else:
+        model.classifier = classifier
+        optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
 
+    optimizer.load_state_dict(ckp['optimizer_dict'])
     return model, model.class_to_idx
 
 def process_image(image):
@@ -147,13 +167,11 @@ def process_image(image):
     img = img.crop((left, top, right, bot))
     np_img = np.array(img)/255
 
-
     mean = np.array([0.485, 0.456, 0.406])
     standard = np.array([0.229, 0.224, 0.225])
     np_img = (np_img - mean) / standard
 
     np_img = np_img.transpose((2, 0, 1))
-
 
     return np_img
 
