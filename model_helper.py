@@ -8,11 +8,9 @@ import os
 
 def arch_to_model(arch):
     switcher = {
-        'vgg11': models.vgg11(pretrained=True),
         'vgg13': models.vgg13(pretrained=True),
         'vgg16': models.vgg16(pretrained=True),
-        'resnet18': models.resnet18(pretrained=True),
-        'vgg19': models.vgg19(pretrained=True)
+        'resnet18': models.resnet18(pretrained=True)
     }
 
     selected = switcher.get(arch, 0)
@@ -47,18 +45,19 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
     else:
         model.classifier = classifier
         optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
+
     model.class_to_idx = class_to_idx
 
     criterion = nn.NLLLoss()
 
 
-
     # Start training here ----------------------------------------->
     if gpu == True:
         device = torch.device('cuda:0')
-        model = model.to(device)
     else:
         device = torch.device('cpu')
+
+    model = model.to(device)
 
     training_loss = 0
     validation_loss = 0
@@ -121,6 +120,7 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                 'model_state_dict' : model.state_dict(),
                 'classifier' : classifier,
                 'learning_rate' : learning_rate,
+                'optimizer' : optimizer,
                 'optimizer_dict' : optimizer.state_dict()},
                write_dir)
 
@@ -134,12 +134,11 @@ def load_model(ckp_path):
     model.class_to_idx = ckp['class_to_idx']
     classifier = ckp['classifier']
     learning_rate = ckp['learning_rate']
+    optimizer = ckp['optimizer']
     if arch == 'resnet18':
         model.fc = classifier
-        optimizer = optim.Adam(model.fc.parameters(), lr=learning_rate)
     else:
         model.classifier = classifier
-        optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
 
     optimizer.load_state_dict(ckp['optimizer_dict'])
     return model, model.class_to_idx
@@ -182,7 +181,7 @@ def foward(image_path, checkpoint, top_k, gpu):
     image = process_image(image_path)
     image = torch.from_numpy(image).type(torch.FloatTensor)
     image = image.unsqueeze(0)
-    print(gpu)
+    #print(gpu)
     if gpu == True:
         device = torch.device('cuda:0')
         model = model.to(device)
@@ -191,10 +190,8 @@ def foward(image_path, checkpoint, top_k, gpu):
     logps = model(image)
     prob = torch.exp(logps)
     top_p, top_class = prob.topk(top_k, dim=1)
+    print('top_p {}  top_class {}'.format(top_p, top_class))
 
     classes = top_class[0].tolist()
     probs = top_p[0].tolist()
     return probs, classes, class_to_idx
-
-def predict(image_path, checkpoint, top_k, catagory_names, gpu):
-    top_p, top_class = foward(image_path, checkpoint, top_k, gpu)
