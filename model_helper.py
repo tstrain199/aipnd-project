@@ -8,9 +8,10 @@ import os
 
 def arch_to_model(arch):
     switcher = {
+        'vgg11': models.vgg11(pretrained=True),
         'vgg13': models.vgg13(pretrained=True),
-        'vgg16': models.vgg16(pretrained=True),
-        'resnet18': models.resnet18(pretrained=True)
+        'vgg16' : models.vgg16(pretrained=True),
+        'alexnet' : models.alexnet(pretrained=True)
     }
 
     selected = switcher.get(arch, 0)
@@ -22,15 +23,11 @@ def arch_to_model(arch):
 
 def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, gpu, save_dir):
 
-
-
-    #Configure all our model stuff here-------------------------->
+    #Configure all our model, classifier stuff here-------------------------->
     model = arch_to_model(arch)
-    if arch == 'resnet18':
-        features = model.fc.in_features
+    if arch == 'alexnet':
+        features = model.classifier[1].in_features
     else:
-        for param in model.parameters():
-            param.requires_grad = False
         features = model.classifier[0].in_features
 
     classifier = nn.Sequential(OrderedDict([('fc1', nn.Linear(features, hidden_units)),
@@ -39,17 +36,12 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                                             ('fc2', nn.Linear(hidden_units, 102)),
                                             ('output', nn.LogSoftmax(dim=1))]))
 
-    if arch == 'resnet18':
-        model.fc = classifier
-        optimizer = optim.Adam(model.fc.parameters(), lr=learning_rate)
-    else:
-        model.classifier = classifier
-        optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
+    model.classifier = classifier
+    optimizer = optim.SGD(model.classifier.parameters(), lr=learning_rate)
 
     model.class_to_idx = class_to_idx
 
     criterion = nn.NLLLoss()
-
 
     # Start training here ----------------------------------------->
     if gpu == True:
@@ -111,8 +103,8 @@ def trainer(data_set, class_to_idx, hidden_units, learning_rate, epochs, arch, g
                   "Test Loss: {:.3f}.. ".format(validation_loss),
                   "Test Accuracy: {:.3f}".format(test_accuracy))
     # End of model config ----------------------------------------->
-    # Start of Save ----------------------------------------------->
 
+    # Start of Save ----------------------------------------------->
     model.cpu()
     write_dir = os.path.join(save_dir, 'flowers.pth')
     torch.save({'class_to_idx' : model.class_to_idx,
@@ -134,12 +126,8 @@ def load_model(ckp_path):
     model.class_to_idx = ckp['class_to_idx']
     classifier = ckp['classifier']
     learning_rate = ckp['learning_rate']
+    model.classifier = classifier
     optimizer = ckp['optimizer']
-    if arch == 'resnet18':
-        model.fc = classifier
-    else:
-        model.classifier = classifier
-
     optimizer.load_state_dict(ckp['optimizer_dict'])
     return model, model.class_to_idx
 
@@ -174,14 +162,13 @@ def process_image(image):
 
     return np_img
 
-
 def foward(image_path, checkpoint, top_k, gpu):
 
     model, class_to_idx = load_model(checkpoint)
     image = process_image(image_path)
     image = torch.from_numpy(image).type(torch.FloatTensor)
     image = image.unsqueeze(0)
-    #print(gpu)
+
     if gpu == True:
         device = torch.device('cuda:0')
         model = model.to(device)
@@ -190,7 +177,7 @@ def foward(image_path, checkpoint, top_k, gpu):
     logps = model(image)
     prob = torch.exp(logps)
     top_p, top_class = prob.topk(top_k, dim=1)
-    print('top_p {}  top_class {}'.format(top_p, top_class))
+
 
     classes = top_class[0].tolist()
     probs = top_p[0].tolist()
